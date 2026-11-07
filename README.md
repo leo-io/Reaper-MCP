@@ -34,7 +34,7 @@
 
 ReaperMCP connects any MCP-compatible AI assistant to [REAPER](https://www.reaper.fm/), giving it full control over music production. Talk to your AI assistant and it composes, mixes, masters, and *measures* your music in real-time — the AI chooses every note, rhythm, and CC itself.
 
-**181 tools across 26 modules** cover the full workflow: MIDI composition and patterns, a vocal-chop pipeline, FX and automatic genre-tuned mixing/mastering (35 style profiles), sends and routing, and post-production QC — batch editing, ReaScript automation, silence/click detection.
+**182 tools across 27 modules** cover the full workflow: MIDI composition and patterns, a vocal-chop pipeline, FX and automatic genre-tuned mixing/mastering (35 style profiles), sends and routing, and post-production QC — batch editing, ReaScript automation, silence/click detection.
 
 **No cloud. Nothing leaves your machine.** ReaperMCP runs entirely locally through a file-based Lua IPC bridge inside REAPER — your project, audio, and MIDI stay on your computer. Bring whatever AI client you already use (Claude Desktop, Claude Code, Cursor, any MCP client) — ReaperMCP handles REAPER.
 
@@ -166,7 +166,7 @@ Open your AI client and start talking:
 
 ## Features
 
-### 181 Tools Across 26 Modules
+### 182 Tools Across 27 Modules
 
 | Category | Tools | Highlights |
 |----------|------:|------------|
@@ -196,18 +196,25 @@ Open your AI client and start talking:
 | **Audio Analysis** | 7 | `analyze_loudness` (LUFS vs. streaming/broadcast/cinema target), `analyze_clipping`, `analyze_silence`, `analyze_peaks`, `analyze_region_qc` (edit-oriented QC — silence/click candidates per region), `analyze_frequency_spectrum`, `analyze_stereo_field`. Optional extras: `pip install -e ".[analysis]"` (or `pip install "xdarkzx-reaper-mcp[analysis]"` if installed from PyPI) |
 | **Script** | 2 | `script_list`, `script_run` — discover and execute ReaScript files in the project's Scripts tree |
 | **Demo** | 1 | `demo_edm_project` — one-shot full-project demo render (smoke test + reference) |
+| **DJ Preview Minimix** | 1 | `automix_preview` — an ordered song list becomes a beat-synced two-deck preview in a new REAPER tab, with a sync report (see below) |
+
+### DJ preview minimix
+
+`automix_preview(songs, output_dir, project_name)` mixes your songs **in the order you pass them**: 4 solo bars per song, 16-bar beat-synced transitions between songs (8 or 4 bars only for a pair that has no clean stretch that long), alternating between two decks. It opens the result in a new REAPER tab and returns a sync report: a grid check to 1 µs and an audio phase check between the decks (warning above 5 ms, failure above 15 ms).
+
+It does not analyse beats. Each song needs beat data from your other tools first: `automixer beatthis <folder>` (conga_automixer) or the snapped beatmaps from automixer_mcp. A song without beats is an error that names the song and the command to run.
 
 > See **[docs/TOOLS.md](docs/TOOLS.md)** for the complete tool reference with every signature and a one-line description for each tool.
 
 ### Tool profiles
 
-The default 181-tool surface is designed for full-featured frontier models. Smaller/cheaper models (Groq Llama 3 caps at 128 tools, some local models lower still) will silently truncate. Set `REAPER_MCP_PROFILE` in your client's server config to pick a workflow-specific subset:
+The default 182-tool surface is designed for full-featured frontier models. Smaller/cheaper models (Groq Llama 3 caps at 128 tools, some local models lower still) will silently truncate. Set `REAPER_MCP_PROFILE` in your client's server config to pick a workflow-specific subset:
 
 | Profile | Tools | For |
 |---------|------:|-----|
-| `full` *(default)* | ~180 | Frontier models — Claude, GPT-4, Gemini |
+| `full` *(default)* | ~182 | Frontier models — Claude, GPT-4, Gemini |
 | `composition` | ~130 | Writing / editing music (includes patterns, loops, batch item/marker edits, ReaScript) |
-| `mixing` | ~71 | Mixing, mastering, bus pipelines |
+| `mixing` | ~72 | Mixing, mastering, bus pipelines |
 | `analysis` | ~53 | Inspect + measure only |
 | `minimal` | ~43 | Smoke test / basic control |
 
@@ -313,7 +320,7 @@ Reaper-MCP/
 │   │       ├── pop.py              # 4 pop subgenres
 │   │       ├── electronic.py       # synthwave, lofi, ambient, hiphop
 │   │       └── _shared.py          # Shared role → EQ/comp library
-│   └── tools/                      # 26 modules, 181 auto-registered tools
+│   └── tools/                      # 27 modules, 182 auto-registered tools
 │       ├── transport_tools.py      # Playback and recording (11)
 │       ├── track_tools.py          # Track management + freeze (18)
 │       ├── template_tools.py       # Track templates (4)
@@ -340,6 +347,7 @@ Reaper-MCP/
 │       ├── analysis_tools.py       # LUFS, clipping, spectrum, stereo field, silence/peak/region QC (7, optional deps)
 │       ├── script_tools.py         # ReaScript discovery + execution (2)
 │       ├── demo_tools.py           # demo_edm_project (1)
+│       ├── automix_tools.py        # automix_preview: DJ preview minimix (1)
 │       └── compose_helpers.py      # Shared helpers (no tools)
 ├── reaper_mcp_shared/
 │   ├── constants.py                # IPC paths, timeouts, safety limits

@@ -1298,11 +1298,171 @@ function project.project_new(p)
   return {name = name, track_count = reaper.CountTracks(0)}
 end
 
+-- Run a REAPER main action only after its name matches `needle`. Action IDs
+-- have moved between REAPER versions, so a bare Main_OnCommand(id) could run
+-- something unrelated. Returns true when the action ran.
+local function run_named_action(cmd, needle)
+  local text = reaper.kbd_getTextFromCmd(cmd, 0)
+  if type(text) ~= "string" or not text:find(needle, 1, true) then return false end
+  reaper.Main_OnCommand(cmd, 0)
+  return true
+end
+
+-- Open an .rpp. By default it replaces the current project, but never when
+-- that has unsaved changes: Main_openProject would pop a modal "save changes?"
+-- dialog and freeze the bridge. With new_tab=true the project opens in a
+-- fresh project tab instead (unless the current tab is empty and clean).
 function project.project_open(p)
   if not p.path then return nil, "Missing parameter: path" end
-  reaper.Main_openProject(p.path)
+  local warnings = {}
+  local new_tab_opened = false
+  local dirty = reaper.IsProjectDirty(0) ~= 0
+  if p.new_tab then
+    local in_use = dirty or reaper.CountTracks(0) > 0 or reaper.CountMediaItems(0) > 0
+    if in_use then
+      -- 41929 = "New project tab (ignore default template)", 40859 = "New project tab"
+      if not (run_named_action(41929, "New project tab") or run_named_action(40859, "New project tab")) then
+        return nil, "Could not open a new project tab: REAPER actions 41929 and 40859 are not named 'New project tab' in this version"
+      end
+      new_tab_opened = true
+    end
+  elseif dirty then
+    return nil, "Current project has unsaved changes; save it first or pass new_tab=true"
+  end
+  reaper.Main_openProject("noprompt:" .. p.path)
+  if p.new_tab then
+    -- Cosmetic: build peaks and zoom out. A renamed action only adds a warning.
+    if not run_named_action(40047, "Build any missing peaks") then
+      warnings[#warnings + 1] = "action 40047 (build missing peaks) did not match its expected name; skipped"
+    end
+    if not run_named_action(40295, "Zoom out project") then
+      warnings[#warnings + 1] = "action 40295 (zoom out project) did not match its expected name; skipped"
+    end
+  end
   local _, name = reaper.GetProjectName(0, "")
-  return {name = name, track_count = reaper.CountTracks(0), item_count = reaper.CountMediaItems(0), bpm = reaper.Master_GetTempo(), length = reaper.GetProjectLength(0)}
+  local _, file_path = reaper.EnumProjects(-1, "")
+  return {
+    name = name,
+    file_path = file_path,
+    track_count = reaper.CountTracks(0),
+    item_count = reaper.CountMediaItems(0),
+    bpm = reaper.Master_GetTempo(),
+    length = reaper.GetProjectLength(0),
+    new_tab_opened = new_tab_opened,
+    warnings = warnings,
+  }
+end
+
+-- Caps for the automix probes. Mirror MAX_AUTOMIX_* in reaper_mcp_shared/constants.py.
+local AUTOMIX_MAX_PROBE_POINTS = 4000
+local AUTOMIX_MAX_PHASE_WINDOWS = 32
+local AUTOMIX_MAX_WINDOW_SEC = 1.0
+
+local function automix_list_param(value)
+  if type(value) == "string" then value = json_decode(value) end
+  if type(value) ~= "table" then return nil end
+  return value
+end
+
+-- Read-only. For each {item_guid, sm_index, qn}: where the item's stretch
+-- marker really sits on the project timeline (sm_time) and where the tempo map
+-- puts that quarter note (grid_time). sm_index is 0-based.
+function project.automix_grid_probe(p)
+  local points = automix_list_param(p.points)
+  if not points then return nil, "Missing parameter: points" end
+  if #points > AUTOMIX_MAX_PROBE_POINTS then
+    return nil, "Too many points: " .. #points .. " (max " .. AUTOMIX_MAX_PROBE_POINTS .. ")"
+  end
+  local by_guid = {}
+  for i = 0, reaper.CountMediaItems(0) - 1 do
+    local it = reaper.GetMediaItem(0, i)
+    local _, guid = reaper.GetSetMediaItemInfo_String(it, "GUID", "", false)
+    if guid and guid ~= "" then by_guid[guid:upper()] = it end
+  end
+  local results = {}
+  for i, pt in ipairs(points) do
+    local it = by_guid[tostring(pt.item_guid or ""):upper()]
+    local take = it and reaper.GetActiveTake(it)
+    if not take then
+      results[i] = {error = "item not found"}
+    else
+      local sm_index = math.floor(tonumber(pt.sm_index) or -1)
+      local n = reaper.GetTakeNumStretchMarkers(take)
+      if sm_index < 0 or sm_index >= n then
+        results[i] = {error = "sm index out of range"}
+      else
+        local _, sm_pos = reaper.GetTakeStretchMarker(take, sm_index)
+        local rate = reaper.GetMediaItemTakeInfo_Value(take, "D_PLAYRATE")
+        if not rate or rate == 0 then rate = 1 end
+        results[i] = {
+          sm_time = reaper.GetMediaItemInfo_Value(it, "D_POSITION") + sm_pos / rate,
+          grid_time = reaper.TimeMap2_QNToTime(0, tonumber(pt.qn) or 0),
+        }
+      end
+    end
+  end
+  return {results = results, count = #results}
+end
+
+-- Rectified mean amplitude of one track's output in one window, in nbins
+-- equal bins. The accessor is destroyed even when the read fails.
+local function automix_read_envelope(tr, start_sec, dur_sec, sample_rate, nbins)
+  local n = math.floor(dur_sec * sample_rate + 0.5)
+  local acc = reaper.CreateTrackAudioAccessor(tr)
+  local ok, res = pcall(function()
+    local buf = reaper.new_array(n)
+    local rv = reaper.GetAudioAccessorSamples(acc, sample_rate, 1, start_sec, n, buf)
+    if rv == nil or rv < 0 then error("GetAudioAccessorSamples failed (" .. tostring(rv) .. ")") end
+    local samples = buf.table()
+    local bins = {}
+    for b = 0, nbins - 1 do
+      local from = math.floor(b * n / nbins) + 1
+      local to = math.floor((b + 1) * n / nbins)
+      local sum = 0
+      for k = from, to do sum = sum + math.abs(samples[k] or 0) end
+      bins[b + 1] = (to >= from) and (sum / (to - from + 1)) or 0
+    end
+    return bins
+  end)
+  reaper.DestroyAudioAccessor(acc)
+  if not ok then error(res, 0) end
+  return res
+end
+
+-- Read-only. For each {track_index, start_sec, dur_sec}: the rectified
+-- envelope of that track's audio, for the sync report's phase check.
+function project.automix_phase_envelope(p)
+  local windows = automix_list_param(p.windows)
+  if not windows then return nil, "Missing parameter: windows" end
+  if #windows > AUTOMIX_MAX_PHASE_WINDOWS then
+    return nil, "Too many windows: " .. #windows .. " (max " .. AUTOMIX_MAX_PHASE_WINDOWS .. ")"
+  end
+  local sample_rate = tonumber(p.sample_rate) or 11025
+  local bin_sec = tonumber(p.bin_sec) or 0.0005
+  if sample_rate < 4000 or sample_rate > 48000 then return nil, "sample_rate must be 4000-48000" end
+  if bin_sec <= 0 then return nil, "bin_sec must be positive" end
+  -- Validate every window before reading any audio.
+  local plan = {}
+  for i, w in ipairs(windows) do
+    local dur = tonumber(w.dur_sec)
+    if not dur or dur <= 0 or dur > AUTOMIX_MAX_WINDOW_SEC then
+      return nil, "window " .. i .. ": dur_sec must be > 0 and <= " .. AUTOMIX_MAX_WINDOW_SEC
+    end
+    local start = tonumber(w.start_sec)
+    if not start or start < 0 then return nil, "window " .. i .. ": start_sec must be >= 0" end
+    local tr, _, err = get_numbered_track(w)
+    if not tr then return nil, "window " .. i .. ": " .. err end
+    plan[i] = {tr = tr, start = start, dur = dur}
+  end
+  local out = {}
+  for i, w in ipairs(plan) do
+    local nbins = math.max(1, math.floor(w.dur / bin_sec + 0.5))
+    out[i] = {
+      bins = automix_read_envelope(w.tr, w.start, w.dur, sample_rate, nbins),
+      bin_sec = w.dur / nbins,
+    }
+  end
+  return {windows = out, count = #out}
 end
 
 function project.project_save(p)
@@ -5949,7 +6109,9 @@ local UNDO_EXEMPT_COMMANDS = {
   project_get_notes_info = "read-only",
   project_main_action = "runs a REAPER action, which records its own undo point",
   project_new = "replaces the whole project",
-  project_open = "replaces the whole project",
+  automix_grid_probe = "read-only timing probe",
+  automix_phase_envelope = "read-only audio analysis via audio accessor",
+  project_open = "replaces the project or opens a new tab",
   project_redo = "recording a point after a redo would erase the redo stack",
   project_save = "file operation, changes nothing in the project",
   project_save_as = "file operation, changes nothing in the project",

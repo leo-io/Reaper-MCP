@@ -99,6 +99,7 @@ BUILTIN_PROFILES: dict[str, ToolProfile] = {
             "transport_tools", "track_tools", "fx_tools", "inventory_tools",
             "mix_tools", "sidechain_tools", "pipeline_tools", "send_tools",
             "envelope_tools", "analysis_tools", "compose_edit_tools", "loops_tools",
+            "automix_tools",
         },
         instruction_packs=["core", "mixing", "automation", "styles"],
     ),
@@ -124,7 +125,7 @@ BUILTIN_PROFILES: dict[str, ToolProfile] = {
             "take_tools", "midi_tools", "quantize_tools", "selection_tools",
             "fx_tools", "inventory_tools", "mix_tools", "sidechain_tools",
             "envelope_tools", "send_tools", "pipeline_tools", "compose_edit_tools",
-            "loops_tools", "compose_tools",
+            "loops_tools", "compose_tools", "automix_tools",
         },
         instruction_packs=["core", "composition", "automation", "mixing", "styles"],
     ),
@@ -136,7 +137,7 @@ PROFILES: dict[str, set[str] | None] = {
 }
 
 _EXPECTED_MODULES = frozenset({
-    "analysis_tools", "chops_tools", "compose_edit_tools", "compose_tools",
+    "analysis_tools", "automix_tools", "chops_tools", "compose_edit_tools", "compose_tools",
     "demo_tools", "envelope_tools", "fx_tools", "inventory_tools",
     "item_tools", "loops_tools", "marker_tools", "midi_tools", "mix_tools",
     "patterns_tools", "pipeline_tools", "project_tools", "quantize_tools",

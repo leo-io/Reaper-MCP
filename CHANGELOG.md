@@ -4,6 +4,31 @@ All notable changes to ReaperMCP will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **`automix_preview`: a beat-synced DJ preview minimix** from an ordered
+  list of songs. Songs keep exactly the order given; each song gets 4 solo
+  bars and 16-bar transitions (8 or 4 only for a pair with no clean stretch
+  that long) on two alternating decks, stretched per beat onto one linear
+  tempo ramp. It writes `<name>.rpp` plus `<name>.automix.json`, opens the
+  project in a new REAPER tab, and returns a sync report: a grid check
+  (1 µs) and an audio phase check between the decks (warn above 5 ms, fail
+  above 15 ms). Beats must come from `automixer beatthis` or automixer_mcp's
+  snapped beatmaps; a song without them is an error naming it. In the
+  `full`, `mixing` and `production` profiles.
+- Two read-only bridge commands behind the sync report:
+  `automix_grid_probe` and `automix_phase_envelope`.
+- `project_open(new_tab=True)` opens a project in a new project tab, builds
+  its peaks and zooms out; each REAPER action it runs is checked by name
+  first.
+
+### Changed
+
+- **`project_open` no longer freezes the bridge on unsaved changes.** With
+  the default `new_tab=False` it now refuses, with a message, while the
+  current project has unsaved changes (REAPER's save-changes dialog used to
+  block the bridge). It also requires a `.rpp` path.
+
 ## [0.8.3] - 2026-10-26
 
 ### Added

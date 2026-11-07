@@ -64,3 +64,54 @@ class TestRenderFormatCodes:
         assert _RENDER_FORMAT_CODES["wav"] == "evaw"
         assert _RENDER_FORMAT_CODES["flac"] == "calf"
         assert _RENDER_FORMAT_CODES["aiff"] == "ffia"
+
+
+class TestProjectOpenTool:
+    """project_open validates its arguments, then forwards new_tab to the bridge."""
+
+    @staticmethod
+    def _tool(monkeypatch, calls):
+        import reaper_mcp.main as main
+        from reaper_mcp.tools import project_tools
+
+        class Client:
+            async def execute(self, command, **params):
+                calls.append((command, params))
+                return {"success": True}
+
+        class Collector:
+            tools = {}
+
+            def tool(self, *a, **k):
+                return lambda fn: self.tools.setdefault(fn.__name__, fn)
+
+        monkeypatch.setattr(main, "client", Client(), raising=False)
+        collector = Collector()
+        collector.tools = {}
+        project_tools.register(collector)
+        return collector.tools["project_open"]
+
+    def test_new_tab_defaults_to_false_and_is_forwarded(self, monkeypatch, tmp_path):
+        import asyncio
+
+        calls = []
+        tool = self._tool(monkeypatch, calls)
+        path = str(tmp_path / "mix.rpp")
+        asyncio.run(tool(path))
+        asyncio.run(tool(path, new_tab=True))
+        assert [c[1]["new_tab"] for c in calls] == [False, True]
+        assert all(c[0] == "project_open" for c in calls)
+
+    def test_relative_non_rpp_and_non_bool_arguments_are_rejected(self, monkeypatch, tmp_path):
+        import asyncio
+
+        import pytest
+
+        from reaper_mcp_shared.error_codes import ReaperMCPError
+
+        calls = []
+        tool = self._tool(monkeypatch, calls)
+        for args in (("mix.rpp",), (str(tmp_path / "song.wav"),), (str(tmp_path / "mix.rpp"), "yes")):
+            with pytest.raises(ReaperMCPError):
+                asyncio.run(tool(*args))
+        assert calls == []

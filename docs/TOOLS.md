@@ -1,6 +1,6 @@
 # Tools Reference
 
-Complete reference for every MCP tool exposed by ReaperMCP — **181 tools across 26 modules**. Grouped by domain; each tool links to its source module.
+Complete reference for every MCP tool exposed by ReaperMCP — **182 tools across 27 modules**. Grouped by domain; each tool links to its source module.
 
 > All tools are async. Numeric inputs are range-validated before being sent to REAPER. Track/item indices are 0-based.
 
@@ -12,10 +12,10 @@ Set `REAPER_MCP_PROFILE=<name>` in your MCP client's server config to register o
 
 | Profile | Modules | Exact Tools | Instruction Chars | Use when |
 |---------|--------:|------------:|------------------:|----------|
-| `full` | 26 | 181 | ~14.9k | Default. You're on Claude / GPT-4 / Gemini-class models. |
+| `full` | 27 | 182 | ~14.9k | Default. You're on Claude / GPT-4 / Gemini-class models. |
 | `composition` | 17 | 138 | ~8.4k | Writing or editing music (incl. patterns, loops, vocal chops, batch item/marker edits, ReaScript). Drops FX, mix, sidechain, analysis. |
-| `production` | 18 | 144 | ~11.8k | MIDI instruments, stem bouncing, FX chains (`setup_fx_chain`/`setup_effect_bus`), and mixing. Also gets `compose_tools` (`get_track_instruments`/`analyze_score`/`compose_arrangement`) — previously missing despite loading the composition instructions. Drops arrangement helpers (patterns/chops). |
-| `mixing` | 12 | 84 | ~9.5k | Mixing / mastering / bus pipelines, including batch FX setup (`setup_fx_chain`/`setup_effect_bus`). Drops MIDI / most composition. |
+| `production` | 19 | 145 | ~11.8k | MIDI instruments, stem bouncing, FX chains (`setup_fx_chain`/`setup_effect_bus`), and mixing. Also gets `compose_tools` (`get_track_instruments`/`analyze_score`/`compose_arrangement`) — previously missing despite loading the composition instructions. Drops arrangement helpers (patterns/chops). |
+| `mixing` | 13 | 85 | ~9.5k | Mixing / mastering / bus pipelines, including batch FX setup (`setup_fx_chain`/`setup_effect_bus`). Drops MIDI / most composition. |
 | `analysis` | 6 | 62 | ~4.6k | Inspect and measure only. Read-mostly workflow. |
 | `minimal` | 4 | 52 | ~2.4k | Smoke test / basic control surface. |
 
@@ -103,6 +103,7 @@ On startup the server writes a banner to stderr confirming the active profile, r
 | [Audio Analysis](#audio-analysis) | `analysis_tools.py` | 7 |
 | [ReaScript](#reascript) | `script_tools.py` | 2 |
 | [Demo](#demo) | `demo_tools.py` | 1 |
+| [DJ Preview Minimix](#dj-preview-minimix) | `automix_tools.py` | 1 |
 
 ---
 
@@ -170,7 +171,7 @@ Project lifecycle, save/load, rendering, undo. Source: `project_tools.py`.
 | `project_get_change_count()` | Cheap counter that bumps on any edit — check it before re-fetching heavier data (`track_get_all`, `item_get_all`) instead of blindly re-querying every turn. |
 | `project_get_overview()` | One call for counts + region list + change_count + a selection summary — start here for post-production work instead of composing `project_get_info` + `marker_get_all` + `selection_get_*` yourself. |
 | `project_new()` | Create a new empty project. |
-| `project_open(path)` | Open a project file. |
+| `project_open(path, new_tab=False)` | Open a `.rpp` project file. By default it replaces the current project, and is refused (nothing opens) while that has unsaved changes; `new_tab=True` opens it in a new project tab instead. |
 | `project_save()` | Save the current project. |
 | `project_save_as(path)` | Save the project to a new path. |
 | `project_export_audio(path, format="wav")` | Render the project to audio. Supported formats: `wav`, `mp3`, `ogg`, `flac`, `aiff`. |
@@ -605,6 +606,16 @@ user first, unless they've already named that exact script.
 | Tool | Description |
 |------|-------------|
 | `demo_edm_project(clean_first=True, bpm=140.0)` | Build a complete demo EDM project end-to-end — tracks, MIDI, mix, master. Useful as a smoke test and a reference for what the pipeline can do. |
+
+## DJ Preview Minimix
+
+Turn an ordered list of songs into a beat-synced two-deck preview in a new REAPER tab. Source: `automix_tools.py`, with the planning code in `reaper_mcp/automix/`.
+
+| Tool | Description |
+|------|-------------|
+| `automix_preview(songs, output_dir, project_name="preview_minimix")` | Builds `<project_name>.rpp` and `<project_name>.automix.json` in `output_dir` and opens the project in a new REAPER tab. Songs keep exactly the order given (2-100 absolute audio paths). Layout is fixed: 4 solo bars per song, 16-bar transitions that shrink to 8 or 4 bars only for a pair where a song has no clean stretch that long. Decks A and B alternate; transitions stretch both decks per beat onto one linear tempo ramp, with near-equal-power fades. Returns the tracklist, transitions, warnings and a `verify` sync report (grid check to 1 µs; audio phase check between the decks, warning above 5 ms, failure above 15 ms). Never overwrites an existing output. |
+
+**Beat files are a prerequisite.** The tool does not analyse audio. Each song needs beats from `automixer beatthis <folder>` (conga_automixer, `beat_this/<name>.beats`) or the snapped beatmaps of automixer_mcp (`.automixer_cache/<name>_<hash>.beatmap.json`). A song without them is an error that names it and the command to run.
 
 ---
 

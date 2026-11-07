@@ -105,3 +105,9 @@ MAX_ENVELOPE_POINTS_PER_CALL = 50000 # `envelope_add_points` points-per-call cei
 # total is multiplied across up to 200 regions in one call.
 MAX_ANALYSIS_CANDIDATES = 300
 MAX_ANALYSIS_CANDIDATES_PER_REGION = 50
+
+# automix_preview limits. The two probe caps mirror AUTOMIX_MAX_* in the Lua
+# bridge (reaper_mcp_server.lua) - change them together.
+MAX_AUTOMIX_SONGS = 100              # songs per automix_preview call
+MAX_AUTOMIX_PROBE_POINTS = 4000      # stretch-marker points per automix_grid_probe call
+MAX_AUTOMIX_PHASE_WINDOWS = 32       # windows per automix_phase_envelope call

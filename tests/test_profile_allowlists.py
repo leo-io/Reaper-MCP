@@ -169,3 +169,11 @@ def test_exact_tool_allowlist_registration():
     assert tools_in_mcp == {"track_get_all", "fx_get_chain", "fx_get_params"}
     assert "track_create" not in tools_in_mcp
     assert "fx_add" not in tools_in_mcp
+
+
+def test_automix_preview_is_in_full_mixing_and_production_only():
+    assert "automix_preview" in describe_profile("full").tools
+    assert "automix_preview" in describe_profile("mixing").tools
+    assert "automix_preview" in describe_profile("production").tools
+    for name in ("composition", "analysis", "minimal"):
+        assert "automix_preview" not in describe_profile(name).tools, name

@@ -136,14 +136,29 @@ def register(mcp: FastMCP):
         return await client.execute("project_new")
 
     @mcp.tool()
-    async def project_open(path: str) -> dict:
+    async def project_open(path: str, new_tab: bool = False) -> dict:
         """Open .rpp project file.
+
+        By default the file replaces the current project, and that is refused
+        (nothing opens) when the current project has unsaved changes, because
+        REAPER's save-changes dialog would freeze the bridge. Save first, or
+        pass new_tab=True to open the file in a new project tab and leave the
+        current one untouched.
 
         Args:
             path: Absolute path to .rpp file.
+            new_tab: Open in a new project tab instead of replacing the
+                current project.
+
+        Returns the project info plus `file_path`, `new_tab_opened`, and any
+        `warnings` (e.g. a cosmetic REAPER action that was skipped).
         """
+        if not isinstance(new_tab, bool):
+            raise ReaperMCPError(ErrorCode.INVALID_PARAMETER, f"new_tab must be true or false, got {new_tab!r}")
         path = _safe_path(path)
-        return await client.execute("project_open", path=path)
+        if not path.lower().endswith(".rpp"):
+            raise ReaperMCPError(ErrorCode.INVALID_PATH, f"path must be a .rpp file, got {path!r}")
+        return await client.execute("project_open", path=path, new_tab=new_tab)
 
     @mcp.tool()
     async def project_save() -> dict:
